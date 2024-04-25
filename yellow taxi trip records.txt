@@ -1,0 +1,47 @@
+#Import Libraries
+
+from pyspark.sql.functions import hour
+spark.conf.set("spark.databricks.io.cache.enabled", True )
+
+#Connection Strings
+
+# Azure storage access info
+blob_account_name = "azureopendatastorage"
+blob_container_name = "nyctlc"
+blob_relative_path = "yellow"
+blob_sas_token = "r"
+
+# Allow SPARK to read from Blob remotely
+wasbs_path = 'wasbs://%s@%s.blob.core.windows.net/%s' % (blob_container_name, blob_account_name, blob_relative_path)
+spark.conf.set(
+  'fs.azure.sas.%s.%s.blob.core.windows.net' % (blob_container_name, blob_account_name),
+  blob_sas_token)
+
+# SPARK read parquet, note that it won't load any data yet by now
+df = spark.read.parquet(wasbs_path).cache()
+
+
+#1. Calculate the shortest and longest (tripDistance) trips by time of day
+
+# Extract hour of pickup
+time_of_day_df = df.withColumn("pickupHour", hour("tpepPickupDateTime")).cache()
+
+# Group by pickup hour and find shortest and longest trips
+shortest_trips = time_of_day_df.groupBy("pickupHour").min("tripDistance").alias("min_tripDistance").cache()
+longest_trips = time_of_day_df.groupBy("pickupHour").max("tripDistance").alias("max_tripDistance").cache()
+
+# Show results
+print("Shortest Trips by Time of Day:")
+display(shortest_trips)
+
+print("\nLongest Trips by Time of Day:")
+display(longest_trips)
+
+#2.Calculate the amounts paid (tipAmount, tollsAmount, totalAmount) by airports (rateCodeId)
+
+airport_amounts = df.groupBy("rateCodeId").agg(
+    sum("tipAmount").alias("total_tipAmount"),
+    sum("tollsAmount").alias("total_tollsAmount"),
+    sum("totalAmount").alias("total_totalAmount")
+).cache()
+display(airport_amounts)
